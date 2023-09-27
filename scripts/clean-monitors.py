@@ -10,6 +10,7 @@ import pandas as pd
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import statsmodels.graphics.tsaplots as tsa
 
 def openMonitor(folder_path,pollutant):
 
@@ -101,10 +102,22 @@ def plotWindows(windows,timeWindows):
     
     winLen = len(windows)
     fig, ax = plt.subplots(winLen)
-    
+    stat = pd.DataFrame()
+    stat['autocorr'] = np.zeros(winLen)
+    stat['min']=  np.zeros(winLen)
+    stat['max'] =  np.zeros(winLen)
+    stat['mean']=  np.zeros(winLen)
+    stat['std'] = np.zeros(winLen)
+
     for ii in range(0,winLen):
         ax[ii].plot(timeWindows[ii],windows[ii])
         print(np.isnan(windows[ii]).sum())
+        #print(np.(windows[ii], windows[ii], mode='full'))
+        #stat['autocorr'][ii] = np.correlate(windows[ii], windows[ii], mode='full')
+        stat['min'][ii] = np.nanmin(windows[ii])
+        stat['max'][ii] = np.nanmax(windows[ii])
+        stat['mean'][ii] = np.nanmax(windows[ii])
+        stat['std'][ii] = np.nanstd(windows[ii])
         
 
     fig, ax = plt.subplots()
@@ -112,14 +125,28 @@ def plotWindows(windows,timeWindows):
     for ii in range(0,winLen):
         ax.plot(timeWindows[ii],windows[ii])
         print(np.isnan(windows[ii]).sum())
+        
+    fig, ax = plt.subplots(winLen)
     
-    return
+    for ii in range(0,winLen):
+        data = pd.DataFrame()
+        data['timeseries'] = windows[ii]
+        data_filled = data.fillna(np.nanmean(windows[ii]))
+        tsa.plot_acf(data_filled, lags=100, alpha=0.05, missing ='raise',
+                     title='Auto-correlation coefficients for lags 1 through 40',ax = ax[ii])
+    
+    return stat
+
+
+ 
+
 
 folder_path = '/media/leohoinaski/HDD/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
+folder_path = '/mnt/sdb1/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
 monitors = openMonitor(folder_path,'O3')
 ave5min,ave15min, gaps = averages (monitors)
 dataWin,dateTimeWin = selectWindow(ave15min,1)
-plotWindows(dataWin,dateTimeWin)
-
+stat = plotWindows(dataWin,dateTimeWin)
+# https://timeseriesreasoning.com/contents/correlation/
 
     

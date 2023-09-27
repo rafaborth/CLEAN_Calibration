@@ -12,4 +12,7 @@ folder_path = '/media/leohoinaski/HDD/CLEAN_Calibration/data/2.input_equipo/dado
 
 pollutant = 'O3'
 
-merge_df = opCLEAN.read_multiple_csv_files(folder_path)
+monitors = cl.openMonitor(folder_path,'O3')
+ave5min,ave15min, gaps = cl.averages (monitors)
+dataWin,dateTimeWin = cl.selectWindow(ave15min,1)
+cl.plotWindows(dataWin,dateTimeWin)
