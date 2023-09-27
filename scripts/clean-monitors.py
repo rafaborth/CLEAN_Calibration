@@ -55,39 +55,71 @@ def averages (monitors):
            np.isnan(ave30min.iloc[:,0]).sum(),
            np.isnan(ave60min.iloc[:,0]).sum()]
 
-    return ave15min, gaps
+    return ave5min,ave15min, gaps
 
 
-def selectWindow(ave15min):
+def selectWindow(ave15min,nSensor):
     windows = []
+    timeWindows = []
     count=[]
+    countTime = []
     cc = 0
     for ii in range(0,ave15min.shape[0]):
-        if np.isnan(ave15min['Sensor_1'][ii])==False:
-            count.append(ave15min['Sensor_1'][ii])
-            cc = 0
+        if np.isnan(ave15min['Sensor_'+str(nSensor)][ii])==False:
+            count.append(ave15min['Sensor_'+str(nSensor)][ii])
+            countTime.append(ave15min.index[ii])
 
         else:
             cc = cc+1
-            if cc < 4:
-                count.append(ave15min['Sensor_1'][ii])
+            if cc < 2:
+                count.append(ave15min['Sensor_'+str(nSensor)][ii])
+                countTime.append(ave15min.index[ii])
             else:
                 windows.append(count)
+                timeWindows.append(countTime)
                 count=[]
-
+                countTime=[]
+                cc = 0
     windows = [x for x in windows if x]
-    return windows
+    timeWindows = [x for x in timeWindows if x]
+    adel = []
+    dataWin=[]
+    dateTimeWin=[]
+    for ii,win in enumerate(windows):
+        if len(win)>5*24:
+            print('OK timeWindow')
+            dataWin.append(win)
+            dateTimeWin.append(timeWindows[ii])
+        else:
+            adel.append(ii)
+            
+
+    return dataWin,dateTimeWin
+
+
+def plotWindows(windows,timeWindows):
     
+    winLen = len(windows)
+    fig, ax = plt.subplots(winLen)
     
+    for ii in range(0,winLen):
+        ax[ii].plot(timeWindows[ii],windows[ii])
+        print(np.isnan(windows[ii]).sum())
+        
+
+    fig, ax = plt.subplots()
     
-# def dateTimeCorrection(minuteAve):
-#     clean = pd.DataFrame()
-#     minuteAve = minuteAve.reset_index()
-#     minuteAve['datetime'] = pd.to_datetime(minuteAve[['year','month','day','hour','minute']])
-#     minuteAve.set_index(minuteAve['datetime'], inplace=True)
-#     datePfct = pd.date_range(minuteAve['datetime'].min(),minuteAve['datetime'].max(),freq='1min')  
-#     clean['datetime'] = datePfct
-#     clean.set_index(datePfct, inplace=True)
-#     clean2 = pd.concat([clean,minuteAve], axis=1)
-#     minuteCount = clean2.groupby(clean2.index).count()
+    for ii in range(0,winLen):
+        ax.plot(timeWindows[ii],windows[ii])
+        print(np.isnan(windows[ii]).sum())
+    
+    return
+
+folder_path = '/media/leohoinaski/HDD/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
+monitors = openMonitor(folder_path,'O3')
+ave5min,ave15min, gaps = averages (monitors)
+dataWin,dateTimeWin = selectWindow(ave15min,1)
+plotWindows(dataWin,dateTimeWin)
+
+
     
