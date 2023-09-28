@@ -127,13 +127,20 @@ def plotWindows(windows,timeWindows):
         print(np.isnan(windows[ii]).sum())
         
     fig, ax = plt.subplots(winLen)
-    
     for ii in range(0,winLen):
         data = pd.DataFrame()
         data['timeseries'] = windows[ii]
         data_filled = data.fillna(np.nanmean(windows[ii]))
-        tsa.plot_acf(data_filled, lags=100, alpha=0.05, missing ='raise',
-                     title='Auto-correlation coefficients for lags 1 through 40',ax = ax[ii])
+        tsa.plot_acf(data_filled, lags=len(windows[ii])-1, alpha=0.05, missing ='raise',
+                     title='',ax = ax[ii])
+    
+    fig, ax = plt.subplots(winLen)
+    for ii in range(0,winLen):
+        data = pd.DataFrame()
+        data['timeseries'] = windows[ii]
+        data_filled = data.fillna(np.nanmean(windows[ii]))
+        tsa.plot_pacf(data_filled, lags=len(windows[ii])/50,  method="ywm",
+                     title='',ax = ax[ii])
     
     return stat
 
@@ -142,7 +149,7 @@ def plotWindows(windows,timeWindows):
 
 
 folder_path = '/media/leohoinaski/HDD/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
-folder_path = '/mnt/sdb1/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
+#folder_path = '/mnt/sdb1/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
 monitors = openMonitor(folder_path,'O3')
 ave5min,ave15min, gaps = averages (monitors)
 dataWin,dateTimeWin = selectWindow(ave15min,1)
