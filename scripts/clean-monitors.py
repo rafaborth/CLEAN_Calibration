@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 import statsmodels.graphics.tsaplots as gtsa
 import statsmodels.tsa as tsa
 import statsmodels.api as sm
+from pmdarima.arima import auto_arima
+import ruptures as rpt
 
 def openMonitor(folder_path,pollutant):
 
@@ -147,20 +149,40 @@ def plotWindows(windows,timeWindows):
     return stat
 
 
+def selectWindow(windows,dateTimeWin):
+    winLen = len(windows)
+    for ii in range(0,winLen):     
+        algo = rpt.Pelt(model="l2")
+        algo.fit(np.array(windows[ii]))
+        result = algo.predict(pen=10)
+        rpt.display(np.array(windows[ii]), [],result)
+    
+    return result #calibWind
+    
+
  
 def modelFit(windows,dateTimeWin):  
     winLen = len(windows)
+    fig, ax = plt.subplots(winLen)
     checkModel=[]
     model_fit=[]
-    fig, ax = plt.subplots(winLen)
+    winvar =[]
     for ii in range(0,winLen):
+        winvar.append(np.nanvar(windows[ii]))
         data = pd.DataFrame()
         data['timeseries'] = windows[ii]
         data.index = pd.to_datetime(dateTimeWin[ii])
         data_filled = data.fillna(np.nanmean(windows[ii]))
         checkModel.append(tsa.stattools.adfuller(data_filled))
+
+        auto_arima_model = auto_arima(y=data_filled,
+                                      seasonal=True,
+                                      m=4*24, #seasonality
+                                      information_criterion="aic",
+                                      trace=True)
         arima_model = sm.tsa.SARIMAX(data_filled[0:round(data_filled.shape[0]/2)], 
-                                     order=(1,1,2),seasonal_order = (1, 1, 1, 24*4))
+                                     order=auto_arima_model.order,
+                                     seasonal_order = auto_arima_model.seasonal_order)
         model = arima_model.fit()
         model_fit.append(model.summary())
         model_forecast = model.forecast(data_filled.shape[0]-round(data_filled.shape[0]/2))
@@ -174,8 +196,8 @@ def modelFit(windows,dateTimeWin):
 
 
 
-#folder_path = '/media/leohoinaski/HDD/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
-folder_path = '/mnt/sdb1/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
+folder_path = '/media/leohoinaski/HDD/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
+#folder_path = '/mnt/sdb1/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
 monitors = openMonitor(folder_path,'O3')
 ave5min,ave15min, gaps = averages (monitors)
 dataWin,dateTimeWin = selectWindow(ave15min,1)
@@ -183,5 +205,8 @@ stat = plotWindows(dataWin,dateTimeWin)
 checkModel,model_fit,yhat_conf_int = modelFit(dataWin,dateTimeWin)
 
 # https://timeseriesreasoning.com/contents/correlation/
+# https://www.iese.fraunhofer.de/blog/change-point-detection/
+# https://facebook.github.io/prophet/docs/trend_changepoints.html#automatic-changepoint-detection-in-prophet
+#https://zillow.github.io/luminaire/tutorial/dataprofiling.html
 
     
