@@ -10,7 +10,9 @@ import pandas as pd
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-import statsmodels.graphics.tsaplots as tsa
+import statsmodels.graphics.tsaplots as gtsa
+import statsmodels.tsa as tsa
+import statsmodels.api as sm
 
 def openMonitor(folder_path,pollutant):
 
@@ -131,7 +133,7 @@ def plotWindows(windows,timeWindows):
         data = pd.DataFrame()
         data['timeseries'] = windows[ii]
         data_filled = data.fillna(np.nanmean(windows[ii]))
-        tsa.plot_acf(data_filled, lags=len(windows[ii])-1, alpha=0.05, missing ='raise',
+        gtsa.plot_acf(data_filled, lags=len(windows[ii])-1, alpha=0.05, missing ='raise',
                      title='',ax = ax[ii])
     
     fig, ax = plt.subplots(winLen)
@@ -139,21 +141,40 @@ def plotWindows(windows,timeWindows):
         data = pd.DataFrame()
         data['timeseries'] = windows[ii]
         data_filled = data.fillna(np.nanmean(windows[ii]))
-        tsa.plot_pacf(data_filled, lags=len(windows[ii])/50,  method="ywm",
+        gtsa.plot_pacf(data_filled, lags=len(windows[ii])/50,  method="ywm",
                      title='',ax = ax[ii])
     
     return stat
 
 
  
+def modelFit(windows,dateTimeWin):  
+    winLen = len(windows)
+    checkModel=[]
+    model_fit=[]
+    fig, ax = plt.subplots(winLen)
+    for ii in range(0,winLen):
+        data = pd.DataFrame()
+        data['timeseries'] = windows[ii]
+        data.index = pd.to_datetime(dateTimeWin[ii], infer_datetime_format=True)
+        data_filled = data.fillna(np.nanmean(windows[ii]))
+        checkModel.append(tsa.stattools.adfuller(data_filled))
+        arima_model = sm.tsa.ARIMA(windows[ii], order=(1,1,2))
+        model = arima_model.fit()
+        model_fit.append(model.summary())
+        gtsa.plot_predict(model,ax=ax[ii])
+    return checkModel,model_fit
 
 
-folder_path = '/media/leohoinaski/HDD/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
-#folder_path = '/mnt/sdb1/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
+
+#folder_path = '/media/leohoinaski/HDD/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
+folder_path = '/mnt/sdb1/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
 monitors = openMonitor(folder_path,'O3')
 ave5min,ave15min, gaps = averages (monitors)
 dataWin,dateTimeWin = selectWindow(ave15min,1)
 stat = plotWindows(dataWin,dateTimeWin)
+checkModel,model_fit = modelFit(dataWin,dateTimeWin)
+
 # https://timeseriesreasoning.com/contents/correlation/
 
     
