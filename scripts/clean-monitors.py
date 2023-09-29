@@ -156,14 +156,21 @@ def modelFit(windows,dateTimeWin):
     for ii in range(0,winLen):
         data = pd.DataFrame()
         data['timeseries'] = windows[ii]
-        data.index = pd.to_datetime(dateTimeWin[ii], infer_datetime_format=True)
+        data.index = pd.to_datetime(dateTimeWin[ii])
         data_filled = data.fillna(np.nanmean(windows[ii]))
         checkModel.append(tsa.stattools.adfuller(data_filled))
-        arima_model = sm.tsa.ARIMA(windows[ii], order=(1,1,2))
+        arima_model = sm.tsa.SARIMAX(data_filled[0:round(data_filled.shape[0]/2)], 
+                                     order=(1,1,2),seasonal_order = (1, 1, 1, 24*4))
         model = arima_model.fit()
         model_fit.append(model.summary())
-        gtsa.plot_predict(model,ax=ax[ii])
-    return checkModel,model_fit
+        model_forecast = model.forecast(data_filled.shape[0]-round(data_filled.shape[0]/2))
+        fcast = model.get_forecast(data_filled.shape[0]-round(data_filled.shape[0]/2)).summary_frame()
+        ax[ii].plot(data_filled.index,data_filled['timeseries'])
+        ax[ii].plot(data_filled.index[round(data_filled.shape[0]/2):],
+                    model.forecast(data_filled.shape[0]-round(data_filled.shape[0]/2)))
+        ax[ii].fill_between(data_filled.index[round(data_filled.shape[0]/2):],fcast['mean_ci_lower'], fcast['mean_ci_upper'], color='k', alpha=0.1);    
+
+    return checkModel,model_fit,model_forecast
 
 
 
@@ -173,7 +180,7 @@ monitors = openMonitor(folder_path,'O3')
 ave5min,ave15min, gaps = averages (monitors)
 dataWin,dateTimeWin = selectWindow(ave15min,1)
 stat = plotWindows(dataWin,dateTimeWin)
-checkModel,model_fit = modelFit(dataWin,dateTimeWin)
+checkModel,model_fit,yhat_conf_int = modelFit(dataWin,dateTimeWin)
 
 # https://timeseriesreasoning.com/contents/correlation/
 
