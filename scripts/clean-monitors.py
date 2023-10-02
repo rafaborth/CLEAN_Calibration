@@ -152,14 +152,21 @@ def plotWindows(windows,timeWindows):
 def bestWindow(windows,dateTimeWin):
     winLen = len(windows)
     for ii in range(0,winLen):
-        ts = pd.Series(windows[ii], index=dateTimeWin[ii]).dropna().cumsum()
-        pd.Series(windows[ii], index=dateTimeWin[ii]).dropna().cumsum().plot()
-        ts.rolling(4).std().plot()
+        ts = pd.Series(windows[ii], index=dateTimeWin[ii]).dropna()
+        tscumsum = ts.cumsum()
+        tsdif = ts.diff()
         rollSTD = ts.rolling(30).std()
-        plt.boxplot(ts.rolling(30).std().dropna())
-        rollSTD[rollSTD>np.nanpercentile(rollSTD,99.9)]
+        
+        ts.diff().plot()
+        ts.rolling(2).std().plot()
+        
+        rollSTD = abs(ts.diff().dropna())
+        plt.boxplot(abs(ts.diff().dropna()))
+        
+        plt.boxplot(rollSTD.dropna())
+
+        rollSTD[rollSTD>np.nanpercentile(rollSTD,99)]
         rollSTD.plot()
-        rollSTD[rollSTD>np.nanpercentile(rollSTD,99.9)].plot()
         
         
         
@@ -224,7 +231,8 @@ def modelFit(windows,dateTimeWin):
 
 
 #folder_path = '/media/leohoinaski/HDD/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
-folder_path = '/mnt/sdb1/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
+#folder_path = '/mnt/sdb1/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
+folder_path="C:/Users/Leonardo.Hoinaski/Documents/CLEAN_Calibration/scripts/data/2.input_equipo/dados_brutos"
 monitors = openMonitor(folder_path,'O3')
 ave5min,ave15min, gaps = averages (monitors)
 dataWin,dateTimeWin = selectWindow(ave15min,1)
@@ -234,6 +242,6 @@ stat = plotWindows(dataWin,dateTimeWin)
 # https://timeseriesreasoning.com/contents/correlation/
 # https://www.iese.fraunhofer.de/blog/change-point-detection/
 # https://facebook.github.io/prophet/docs/trend_changepoints.html#automatic-changepoint-detection-in-prophet
-#https://zillow.github.io/luminaire/tutorial/dataprofiling.html
+# https://zillow.github.io/luminaire/tutorial/dataprofiling.html
 
     
