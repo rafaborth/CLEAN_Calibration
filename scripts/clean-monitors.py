@@ -149,9 +149,36 @@ def plotWindows(windows,timeWindows):
     return stat
 
 
-def selectWindow(windows,dateTimeWin):
+def bestWindow(windows,dateTimeWin):
     winLen = len(windows)
-    for ii in range(0,winLen):     
+    for ii in range(0,winLen):
+        ts = pd.Series(windows[ii], index=dateTimeWin[ii]).dropna().cumsum()
+        pd.Series(windows[ii], index=dateTimeWin[ii]).dropna().cumsum().plot()
+        ts.rolling(4).std().plot()
+        rollSTD = ts.rolling(30).std()
+        plt.boxplot(ts.rolling(30).std().dropna())
+        rollSTD[rollSTD>np.nanpercentile(rollSTD,99.9)]
+        rollSTD.plot()
+        rollSTD[rollSTD>np.nanpercentile(rollSTD,99.9)].plot()
+        
+        
+        
+        
+        n = len(windows[ii])  # number of samples
+        sigma = np.nanstd(windows[ii])
+        model = "l2"  # "l1", "rbf", "linear", "normal", "ar"
+        algo = rpt.Binseg(model=model).fit(np.array(windows[ii]))
+        my_bkps = algo.predict(epsilon=3*n*sigma**2)
+        my_bkps = algo.predict(n_bkps=20)
+        
+        # show results
+        rpt.show.display(np.array(windows[ii]), [], my_bkps, figsize=(10, 6))
+        plt.show()
+        
+        # show results
+        rpt.show.display(np.array(windows[ii]), [], my_bkps, figsize=(10, 6))
+        plt.show()
+        
         algo = rpt.Pelt(model="l2")
         algo.fit(np.array(windows[ii]))
         result = algo.predict(pen=10)
@@ -196,13 +223,13 @@ def modelFit(windows,dateTimeWin):
 
 
 
-folder_path = '/media/leohoinaski/HDD/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
-#folder_path = '/mnt/sdb1/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
+#folder_path = '/media/leohoinaski/HDD/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
+folder_path = '/mnt/sdb1/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
 monitors = openMonitor(folder_path,'O3')
 ave5min,ave15min, gaps = averages (monitors)
 dataWin,dateTimeWin = selectWindow(ave15min,1)
 stat = plotWindows(dataWin,dateTimeWin)
-checkModel,model_fit,yhat_conf_int = modelFit(dataWin,dateTimeWin)
+#checkModel,model_fit,yhat_conf_int = modelFit(dataWin,dateTimeWin)
 
 # https://timeseriesreasoning.com/contents/correlation/
 # https://www.iese.fraunhofer.de/blog/change-point-detection/
