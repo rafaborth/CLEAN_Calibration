@@ -156,20 +156,74 @@ def bestWindow(windows,dateTimeWin):
         tscumsum = ts.cumsum()
         tsdif = ts.diff()
         rollSTD = ts.rolling(30).std()
+        rollMean = ts.rolling(30).mean()
         
-        ts.diff().plot()
-        ts.rolling(2).std().plot()
+        fig, ax = plt.subplots()
+        ts.diff().plot(ax=ax)
+        ts.rolling(2).std().plot(ax=ax)
+        ts.plot(ax=ax)
+        
+        fig, ax = plt.subplots()
+
+        ax.plot(ts.index,ts,color='red')
+        ax.plot(tsdif.index,tsdif,color='blue')
+        ax.scatter(tsdif[tsdif>np.nanpercentile(tsdif,99)].index,
+                tsdif[tsdif>np.nanpercentile(tsdif,99)],color='green')
+        ax.plot(tsdif[tsdif<np.nanpercentile(tsdif,99)].index,
+                tsdif[tsdif<np.nanpercentile(tsdif,99)],color='black')
+        
+        
         
         rollSTD = abs(ts.diff().dropna())
         plt.boxplot(abs(ts.diff().dropna()))
         
         plt.boxplot(rollSTD.dropna())
 
-        rollSTD[rollSTD>np.nanpercentile(rollSTD,99)]
-        rollSTD.plot()
+        fig, ax = plt.subplots()
+
+        ax.plot(rollSTD.index,rollSTD,color='red')
+        ax.plot(rollSTD[rollSTD<np.nanpercentile(rollSTD,99)].index,
+                rollSTD[rollSTD<np.nanpercentile(rollSTD,99)],color='blue')
+        ax.scatter(rollSTD[rollSTD>np.nanpercentile(rollSTD,99)].index,
+                rollSTD[rollSTD>np.nanpercentile(rollSTD,99)],color='green')
+        ax.plot(rollMean.index,
+                rollMean,color='black')
+        
+        from sklearn.mixture import GaussianMixture
+
+        gmm = GaussianMixture(n_components=3)
+        gmm.fit(np.array(ts).reshape(-1, 1))
+        means = gmm.means_
+        standard_deviations = gmm.covariances_**0.5  
+        weights = gmm.weights_
+        
+        from scipy.stats import norm
+
+        fig, axes = plt.subplots(nrows=3, ncols=1, sharex='col', figsize=(6.4, 7))
+        
+
+        x = np.linspace(min(np.array(ts)), max(np.array(ts)), 100)
+        for mean, std, weight in zip(means, standard_deviations, weights):
+            pdf = weight*norm.pdf(x, mean, std)
+            plt.plot(x.reshape(-1, 1), pdf.reshape(-1, 1), alpha=0.5)
+        
+        plt.show()
         
         
         
+        from unidip import UniDip
+        import unidip.dip as dip
+        data = np.msort(ts)
+        print(dip.diptst(data))
+        intervals = UniDip(data).run()
+        print(intervals)
+        fig, ax = plt.subplots()
+        for inter in intervals:
+            ax.plot(ts.index[inter[0]:inter[1]],ts[inter[0]:inter[1]])
+        
+        
+        
+
         
         n = len(windows[ii])  # number of samples
         sigma = np.nanstd(windows[ii])
@@ -230,9 +284,9 @@ def modelFit(windows,dateTimeWin):
 
 
 
-#folder_path = '/media/leohoinaski/HDD/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
+folder_path = '/media/leohoinaski/HDD/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
 #folder_path = '/mnt/sdb1/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
-folder_path="C:/Users/Leonardo.Hoinaski/Documents/CLEAN_Calibration/scripts/data/2.input_equipo/dados_brutos"
+#folder_path="C:/Users/Leonardo.Hoinaski/Documents/CLEAN_Calibration/scripts/data/2.input_equipo/dados_brutos"
 monitors = openMonitor(folder_path,'O3')
 ave5min,ave15min, gaps = averages (monitors)
 dataWin,dateTimeWin = selectWindow(ave15min,1)
