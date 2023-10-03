@@ -15,6 +15,10 @@ import statsmodels.tsa as tsa
 import statsmodels.api as sm
 from pmdarima.arima import auto_arima
 import ruptures as rpt
+from sklearn.neighbors import KernelDensity
+from statsmodels.nonparametric.bandwidths import bw_silverman
+from sklearn.mixture import GaussianMixture
+from scipy.stats import norm
 
 def openMonitor(folder_path,pollutant):
 
@@ -145,107 +149,170 @@ def plotWindows(windows,timeWindows):
         data_filled = data.fillna(np.nanmean(windows[ii]))
         gtsa.plot_pacf(data_filled, lags=len(windows[ii])/50,  method="ywm",
                      title='',ax = ax[ii])
-    
+
     return stat
+
+
+def kde_sklearn(x, x_grid, bandwidth=1, **kwargs):
+    """Kernel Density Estimation with Scikit-learn"""
+    kde_skl = KernelDensity(bandwidth=bandwidth, **kwargs)
+    kde_skl.fit(x[:, np.newaxis])
+    # score_samples() returns the log-likelihood of the samples
+    log_pdf = kde_skl.score_samples(x_grid[:, np.newaxis])
+    return np.exp(log_pdf)
+
+
+def getExtremePoints(data, typeOfExtreme = None, maxPoints = None):
+    """
+    This method returns the indeces where there is a change in the trend of the input series.
+    typeOfExtreme = None returns all extreme points, max only maximum values and min
+    only min,
+    """
+    a = np.diff(data)
+    asign = np.sign(a)
+    signchange = ((np.roll(asign, 1) - asign) != 0).astype(int)
+    idx = np.where(signchange ==1)[0]
+    if typeOfExtreme == 'max' and data[idx[0]] < data[idx[1]]:
+        idx = idx[1:][::2]
+        
+    elif typeOfExtreme == 'min' and data[idx[0]] > data[idx[1]]:
+        idx = idx[1:][::2]
+    elif typeOfExtreme is not None:
+        idx = idx[::2]
+    
+    # sort ids by min value
+    if 0 in idx:
+        idx = np.delete(idx, 0)
+    if (len(data)-1) in idx:
+        idx = np.delete(idx, len(data)-1)
+    idx = idx[np.argsort(data[idx])]
+    # If we have maxpoints we want to make sure the timeseries has a cutpoint
+    # in each segment, not all on a small interval
+    if maxPoints is not None:
+        idx= idx[:maxPoints]
+        if len(idx) < maxPoints:
+            return (np.arange(maxPoints) + 1) * (len(data)//(maxPoints + 1))
+    
+    return idx
+
+
+def getPeaks(ts):
+    # Figures - detecting peaks
+    fig, ax = plt.subplots()
+    hh=ax.hist(ts['timeseries'].values)
+    x_grid = np.linspace(hh[1].min(), hh[1].max(), 1000)
+    silverman_bandwidth = bw_silverman(ts['timeseries'].dropna().values)
+    pdf = kde_sklearn(np.array(ts['timeseries'].dropna()),x_grid, bandwidth=silverman_bandwidth*15)
+    ax2 = ax.twinx()
+    # Geting peaks
+    idx = getExtremePoints(pdf, typeOfExtreme = 'max', maxPoints = None)
+    ax2.plot(x_grid, pdf, color='blue', alpha=0.5, lw=3)
+    ax2.scatter(x_grid[idx], pdf[idx], color='cyan', alpha=0.3)
+    # Decomposing pdfs
+    gmm = GaussianMixture(n_components=idx.shape[0])
+    gmm.fit(np.array(ts['timeseries'].dropna()).reshape(-1, 1))
+    means = gmm.means_
+    # Conver covariance into Standard Deviation
+    standard_deviations = gmm.covariances_.reshape(-1,1)**0.5  
+    # Useful when plotting the distributions later
+    weights = gmm.weights_  
+    peaks = pd.DataFrame()
+    peaks['means'] = pd.DataFrame(means)
+    peaks['stds'] = standard_deviations
+    peaks['weights'] = pd.DataFrame(weights)
+    
+    # PDF PLOT
+    fig, axes = plt.subplots()
+    axes.hist(ts['timeseries'].dropna(), bins=50, alpha=0.5)
+    x = np.linspace(min(np.array(ts['timeseries'].dropna())), 
+                    max(np.array(ts['timeseries'].dropna())), 100)
+    ii=0
+    axes2 = axes.twinx()
+    pdfs=[]
+    for mean, std, weight in zip(means, standard_deviations, weights):
+         pdf = weight*norm.pdf(x, mean, std)
+         axes2.plot(x.reshape(-1, 1), pdf.reshape(-1, 1), alpha=0.5)
+         pdfs.append(pdf)           
+         ii=ii+1
+       
+    return peaks
+
+def multi2unimodal(windows,dateTimeWin):
+    # Geting stats from best signal
+    
+    bestSignal,allPeaks,bestPeak = bestWindow(windows,dateTimeWin)
+    
+    lowlim = bestPeak['means']-5*bestPeak['stds']
+    uplim = bestPeak['means']+5*bestPeak['stds']
+    correctTs=[]
+    for ii,winD in enumerate(windows):
+        cts = np.zeros(len(winD))
+        for jj, wd in enumerate(winD):
+            if wd>uplim[0]:
+                difpeak = allPeaks[ii] + bestPeak['means']
+                cts[jj] = + bestPeak['means'])
+            elif wd<lowlim[0]:
+                cts[jj] = wd + (wd+bestPeak['means'])
+            else:
+                cts[jj] = wd
+        correctTs.append(cts)
+                
+    return correctTs
 
 
 def bestWindow(windows,dateTimeWin):
     winLen = len(windows)
+    allPeaks=[]
     for ii in range(0,winLen):
-        ts = pd.Series(windows[ii], index=dateTimeWin[ii]).dropna()
-        tscumsum = ts.cumsum()
-        tsdif = ts.diff()
-        rollSTD = ts.rolling(30).std()
-        rollMean = ts.rolling(30).mean()
-        
-        fig, ax = plt.subplots()
-        ts.diff().plot(ax=ax)
-        ts.rolling(2).std().plot(ax=ax)
-        ts.plot(ax=ax)
-        
-        fig, ax = plt.subplots()
-
-        ax.plot(ts.index,ts,color='red')
-        ax.plot(tsdif.index,tsdif,color='blue')
-        ax.scatter(tsdif[tsdif>np.nanpercentile(tsdif,99)].index,
-                tsdif[tsdif>np.nanpercentile(tsdif,99)],color='green')
-        ax.plot(tsdif[tsdif<np.nanpercentile(tsdif,99)].index,
-                tsdif[tsdif<np.nanpercentile(tsdif,99)],color='black')
-        
-        
-        
-        rollSTD = abs(ts.diff().dropna())
-        plt.boxplot(abs(ts.diff().dropna()))
-        
-        plt.boxplot(rollSTD.dropna())
-
-        fig, ax = plt.subplots()
-
-        ax.plot(rollSTD.index,rollSTD,color='red')
-        ax.plot(rollSTD[rollSTD<np.nanpercentile(rollSTD,99)].index,
-                rollSTD[rollSTD<np.nanpercentile(rollSTD,99)],color='blue')
-        ax.scatter(rollSTD[rollSTD>np.nanpercentile(rollSTD,99)].index,
-                rollSTD[rollSTD>np.nanpercentile(rollSTD,99)],color='green')
-        ax.plot(rollMean.index,
-                rollMean,color='black')
-        
-        from sklearn.mixture import GaussianMixture
-
-        gmm = GaussianMixture(n_components=3)
-        gmm.fit(np.array(ts).reshape(-1, 1))
-        means = gmm.means_
-        standard_deviations = gmm.covariances_**0.5  
-        weights = gmm.weights_
-        
-        from scipy.stats import norm
-
-        fig, axes = plt.subplots(nrows=3, ncols=1, sharex='col', figsize=(6.4, 7))
-        
-
-        x = np.linspace(min(np.array(ts)), max(np.array(ts)), 100)
-        for mean, std, weight in zip(means, standard_deviations, weights):
-            pdf = weight*norm.pdf(x, mean, std)
-            plt.plot(x.reshape(-1, 1), pdf.reshape(-1, 1), alpha=0.5)
-        
-        plt.show()
-        
-        
-        
-        from unidip import UniDip
-        import unidip.dip as dip
-        data = np.msort(ts)
-        print(dip.diptst(data))
-        intervals = UniDip(data).run()
-        print(intervals)
-        fig, ax = plt.subplots()
-        for inter in intervals:
-            ax.plot(ts.index[inter[0]:inter[1]],ts[inter[0]:inter[1]])
-        
-        
-        
-
-        
-        n = len(windows[ii])  # number of samples
-        sigma = np.nanstd(windows[ii])
-        model = "l2"  # "l1", "rbf", "linear", "normal", "ar"
-        algo = rpt.Binseg(model=model).fit(np.array(windows[ii]))
-        my_bkps = algo.predict(epsilon=3*n*sigma**2)
-        my_bkps = algo.predict(n_bkps=20)
-        
-        # show results
-        rpt.show.display(np.array(windows[ii]), [], my_bkps, figsize=(10, 6))
-        plt.show()
-        
-        # show results
-        rpt.show.display(np.array(windows[ii]), [], my_bkps, figsize=(10, 6))
-        plt.show()
-        
-        algo = rpt.Pelt(model="l2")
-        algo.fit(np.array(windows[ii]))
-        result = algo.predict(pen=10)
-        rpt.display(np.array(windows[ii]), [],result)
+        ts = pd.DataFrame()
+        ts['timeseries'] = windows[ii]
+        ts['datetime'] = dateTimeWin[ii]
+        ts = ts.set_index(pd.DatetimeIndex(ts['datetime']))
+        ts = ts.dropna()
+        peaks = getPeaks(ts)
+        allPeaks.append(peaks)
+        # tscumsum = ts['timeseries'].cumsum()
+        # tsdif = ts['timeseries'].diff()
+        # rollSTD = ts['timeseries'].rolling(30).std()
+        # rollMean = ts['timeseries'].rolling(20).mean()
+        # fig, ax = plt.subplots(4)
+        # ax[0].plot(tsdif.index,tsdif,color='orange')
+        # ax[0].scatter(tsdif[tsdif>np.nanpercentile(tsdif,99)].index,
+        #         tsdif[tsdif>np.nanpercentile(tsdif,99)],color='green')
+        # ax[0].scatter(tsdif[tsdif<np.nanpercentile(tsdif,1)].index,
+        #         tsdif[tsdif<np.nanpercentile(tsdif,1)],color='green')
+        # ax[1].plot(rollSTD.index,rollSTD,color='red')
+        # ax[1].scatter(rollSTD[rollSTD>np.nanpercentile(rollSTD,99)].index,
+        #         rollSTD[rollSTD>np.nanpercentile(rollSTD,99)],color='green')
+        # ax[2].plot(rollMean.index,
+        #         rollMean,color='black')
+        # # ax[2].scatter(rollMean[rollMean<np.nanpercentile(rollMean,1)].index,
+        # #         rollMean[rollMean<np.nanpercentile(rollMean,1)],color='green')
+        # # ax[2].scatter(rollMean[rollMean>np.nanpercentile(rollMean,99)].index,
+        # #         rollMean[rollMean>np.nanpercentile(rollMean,99)],color='green')
+        # ax[3].plot(ts.index,ts['timeseries'],color='blue')
     
-    return result #calibWind
+    minPeaks=[]
+    d2 = np.nan
+
+    for allp in allPeaks:
+        minPeaks.append(allp.shape[0])
+    minPeaks = np.min(minPeaks)
+    for idx,allp in enumerate(allPeaks):
+        if allp.shape[0] == minPeaks:
+            d1 = np.max(allp.stds)
+            if d1!=d2:
+                d2=d1
+                windowsId = idx
+  
+        
+    bestSignal = pd.DataFrame()
+    bestSignal['timeseries'] = windows[windowsId]
+    bestSignal['datetime'] = dateTimeWin[windowsId]
+    bestSignal = bestSignal.set_index(pd.DatetimeIndex(bestSignal['datetime']))
+    bestPeak = getPeaks(bestSignal)
+    
+    return  bestSignal,allPeaks,bestPeak
     
 
  
@@ -284,13 +351,16 @@ def modelFit(windows,dateTimeWin):
 
 
 
-folder_path = '/media/leohoinaski/HDD/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
-#folder_path = '/mnt/sdb1/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
+#folder_path = '/media/leohoinaski/HDD/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
+folder_path = '/mnt/sdb1/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
 #folder_path="C:/Users/Leonardo.Hoinaski/Documents/CLEAN_Calibration/scripts/data/2.input_equipo/dados_brutos"
 monitors = openMonitor(folder_path,'O3')
 ave5min,ave15min, gaps = averages (monitors)
 dataWin,dateTimeWin = selectWindow(ave15min,1)
 stat = plotWindows(dataWin,dateTimeWin)
+#correctTs = multi2unimodal(dataWin,dateTimeWin)
+#stat = plotWindows(correctTs,dateTimeWin)
+
 #checkModel,model_fit,yhat_conf_int = modelFit(dataWin,dateTimeWin)
 
 # https://timeseriesreasoning.com/contents/correlation/
