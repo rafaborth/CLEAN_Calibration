@@ -373,7 +373,7 @@ dataWin,dateTimeWin = selectWindow(ave15min,1)
 stat = plotWindows(dataWin,dateTimeWin)
 stdData = multi2unimodal(dataWin,dateTimeWin)
 #stat = plotWindows(stdData.timeseries,stdData.index)
-
+stdData.plot()
 #checkModel,model_fit,yhat_conf_int = modelFit(dataWin,dateTimeWin)
 
 # https://timeseriesreasoning.com/contents/correlation/
