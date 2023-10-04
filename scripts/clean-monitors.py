@@ -141,8 +141,8 @@ def plotWindows(windows,timeWindows):
  
 
 
-folder_path = '/media/leohoinaski/HDD/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
-folder_path = '/mnt/sdb1/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
+folder_path = r'C:\Users\rafab\OneDrive\Documentos\CLEAN_Calibration\data\data_clean\dados_brutos'
+#folder_path = '/mnt/sdb1/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
 monitors = openMonitor(folder_path,'O3')
 ave5min,ave15min, gaps = averages (monitors)
 dataWin,dateTimeWin = selectWindow(ave15min,1)
