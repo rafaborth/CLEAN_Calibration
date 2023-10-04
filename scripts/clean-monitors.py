@@ -238,26 +238,39 @@ def getPeaks(ts):
     return peaks
 
 def multi2unimodal(windows,dateTimeWin):
-    # Geting stats from best signal
-    
+    # Geting local information
     bestSignal,allPeaks,bestPeak = bestWindow(windows,dateTimeWin)
-    
-    lowlim = bestPeak['means']-5*bestPeak['stds']
-    uplim = bestPeak['means']+5*bestPeak['stds']
+    # Standardizing not reference data
     correctTs=[]
+    correctDt=[]
     for ii,winD in enumerate(windows):
-        cts = np.zeros(len(winD))
-        for jj, wd in enumerate(winD):
-            if wd>uplim[0]:
-                difpeak = allPeaks[ii] + bestPeak['means']
-                cts[jj] = + bestPeak['means'])
-            elif wd<lowlim[0]:
-                cts[jj] = wd + (wd+bestPeak['means'])
-            else:
-                cts[jj] = wd
-        correctTs.append(cts)
-                
-    return correctTs
+        winD = np.array(winD)
+        for jj in range(0,allPeaks[ii].shape[0]):
+            lowLocal = allPeaks[ii]['means'][jj]-5*allPeaks[ii]['stds'][jj]
+            upLocal = allPeaks[ii]['means'][jj]+5*allPeaks[ii]['stds'][jj]
+            print(str(lowLocal)+' - '+ str(upLocal))
+            # winD[(winD>lowLocal) & (winD<upLocal)] = \
+            #     (winD[(winD>lowLocal) & (winD<upLocal)]- allPeaks[ii]['means'][jj])/allPeaks[ii]['stds'][jj]
+            correctTs.append((winD[(winD>lowLocal) & (winD<upLocal)]- allPeaks[ii]['means'][jj])/allPeaks[ii]['stds'][jj])   
+            correctDt.append(pd.DataFrame(np.array(dateTimeWin[ii])[(winD>lowLocal) & (winD<upLocal)]))
+        
+    # Correcting using best signal as reference
+    stdData=[]
+    for ii,cts in enumerate(correctTs):
+        cts = np.array(cts)
+        cts = (cts + bestPeak['means'][0])*bestPeak['stds'][0]
+        stdData.append(pd.DataFrame(cts))
+        
+    stdData= pd.concat(stdData)
+    stdData.columns=['timeseries']
+    correctDt= pd.concat(correctDt)
+    
+    stdData['datetime'] = np.array(correctDt)
+    stdData = stdData.set_index('datetime')
+    stdData = stdData.drop_duplicates()
+    stdData = stdData.sort_index()
+
+    return stdData
 
 
 def bestWindow(windows,dateTimeWin):
@@ -351,15 +364,15 @@ def modelFit(windows,dateTimeWin):
 
 
 
-#folder_path = '/media/leohoinaski/HDD/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
-folder_path = '/mnt/sdb1/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
+folder_path = '/media/leohoinaski/HDD/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
+#folder_path = '/mnt/sdb1/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
 #folder_path="C:/Users/Leonardo.Hoinaski/Documents/CLEAN_Calibration/scripts/data/2.input_equipo/dados_brutos"
 monitors = openMonitor(folder_path,'O3')
 ave5min,ave15min, gaps = averages (monitors)
 dataWin,dateTimeWin = selectWindow(ave15min,1)
 stat = plotWindows(dataWin,dateTimeWin)
-#correctTs = multi2unimodal(dataWin,dateTimeWin)
-#stat = plotWindows(correctTs,dateTimeWin)
+stdData = multi2unimodal(dataWin,dateTimeWin)
+#stat = plotWindows(stdData.timeseries,stdData.index)
 
 #checkModel,model_fit,yhat_conf_int = modelFit(dataWin,dateTimeWin)
 
