@@ -14,7 +14,6 @@ import statsmodels.graphics.tsaplots as gtsa
 import statsmodels.tsa as tsa
 import statsmodels.api as sm
 from pmdarima.arima import auto_arima
-import ruptures as rpt
 from sklearn.neighbors import KernelDensity
 from statsmodels.nonparametric.bandwidths import bw_silverman
 from sklearn.mixture import GaussianMixture
@@ -102,7 +101,6 @@ def selectWindow(ave15min,nSensor):
         else:
             adel.append(ii)
             
-
     return dataWin,dateTimeWin
 
 
@@ -134,21 +132,21 @@ def plotWindows(windows,timeWindows):
         ax.plot(timeWindows[ii],windows[ii])
         print(np.isnan(windows[ii]).sum())
         
-    fig, ax = plt.subplots(winLen)
-    for ii in range(0,winLen):
-        data = pd.DataFrame()
-        data['timeseries'] = windows[ii]
-        data_filled = data.fillna(np.nanmean(windows[ii]))
-        gtsa.plot_acf(data_filled, lags=len(windows[ii])-1, alpha=0.05, missing ='raise',
-                     title='',ax = ax[ii])
+    # fig, ax = plt.subplots(winLen)
+    # for ii in range(0,winLen):
+    #     data = pd.DataFrame()
+    #     data['timeseries'] = windows[ii]
+    #     data_filled = data.fillna(np.nanmean(windows[ii]))
+    #     gtsa.plot_acf(data_filled, lags=len(windows[ii])-1, alpha=0.05, missing ='raise',
+    #                  title='',ax = ax[ii])
     
-    fig, ax = plt.subplots(winLen)
-    for ii in range(0,winLen):
-        data = pd.DataFrame()
-        data['timeseries'] = windows[ii]
-        data_filled = data.fillna(np.nanmean(windows[ii]))
-        gtsa.plot_pacf(data_filled, lags=len(windows[ii])/50,  method="ywm",
-                     title='',ax = ax[ii])
+    # fig, ax = plt.subplots(winLen)
+    # for ii in range(0,winLen):
+    #     data = pd.DataFrame()
+    #     data['timeseries'] = windows[ii]
+    #     data_filled = data.fillna(np.nanmean(windows[ii]))
+    #     gtsa.plot_pacf(data_filled, lags=len(windows[ii])/50,  method="ywm",
+    #                  title='',ax = ax[ii])
 
     return stat
 
@@ -202,12 +200,12 @@ def getPeaks(ts):
     hh=ax.hist(ts['timeseries'].values)
     x_grid = np.linspace(hh[1].min(), hh[1].max(), 1000)
     silverman_bandwidth = bw_silverman(ts['timeseries'].dropna().values)
-    pdf = kde_sklearn(np.array(ts['timeseries'].dropna()),x_grid, bandwidth=silverman_bandwidth*15)
-    ax2 = ax.twinx()
+    pdf = kde_sklearn(np.array(ts['timeseries'].dropna()),x_grid, bandwidth=silverman_bandwidth*2)
+    #ax2 = ax.twinx()
     # Geting peaks
     idx = getExtremePoints(pdf, typeOfExtreme = 'max', maxPoints = None)
-    ax2.plot(x_grid, pdf, color='blue', alpha=0.5, lw=3)
-    ax2.scatter(x_grid[idx], pdf[idx], color='cyan', alpha=0.3)
+    #ax2.plot(x_grid, pdf, color='blue', alpha=0.5, lw=3)
+    #ax2.scatter(x_grid[idx], pdf[idx], color='cyan', alpha=0.3)
     # Decomposing pdfs
     gmm = GaussianMixture(n_components=idx.shape[0])
     gmm.fit(np.array(ts['timeseries'].dropna()).reshape(-1, 1))
@@ -221,19 +219,19 @@ def getPeaks(ts):
     peaks['stds'] = standard_deviations
     peaks['weights'] = pd.DataFrame(weights)
     
-    # PDF PLOT
-    fig, axes = plt.subplots()
-    axes.hist(ts['timeseries'].dropna(), bins=50, alpha=0.5)
-    x = np.linspace(min(np.array(ts['timeseries'].dropna())), 
-                    max(np.array(ts['timeseries'].dropna())), 100)
-    ii=0
-    axes2 = axes.twinx()
-    pdfs=[]
-    for mean, std, weight in zip(means, standard_deviations, weights):
-         pdf = weight*norm.pdf(x, mean, std)
-         axes2.plot(x.reshape(-1, 1), pdf.reshape(-1, 1), alpha=0.5)
-         pdfs.append(pdf)           
-         ii=ii+1
+    # # PDF PLOT
+    # fig, axes = plt.subplots()
+    # axes.hist(ts['timeseries'].dropna(), bins=50, alpha=0.5)
+    # x = np.linspace(min(np.array(ts['timeseries'].dropna())), 
+    #                 max(np.array(ts['timeseries'].dropna())), 100)
+    # ii=0
+    # axes2 = axes.twinx()
+    # pdfs=[]
+    # for mean, std, weight in zip(means, standard_deviations, weights):
+    #       pdf = weight*norm.pdf(x, mean, std)
+    #       axes2.plot(x.reshape(-1, 1), pdf.reshape(-1, 1), alpha=0.5)
+    #       pdfs.append(pdf)           
+    #       ii=ii+1
        
     return peaks
 
@@ -258,7 +256,8 @@ def multi2unimodal(windows,dateTimeWin):
     stdData=[]
     for ii,cts in enumerate(correctTs):
         cts = np.array(cts)
-        cts = (cts + bestPeak['means'][0])*bestPeak['stds'][0]
+        
+        cts = (cts + bestPeak['means'][np.argmax(bestPeak['weights'])])*bestPeak['stds'][np.argmax(bestPeak['weights'])]
         stdData.append(pd.DataFrame(cts))
         
     stdData= pd.concat(stdData)
@@ -269,8 +268,10 @@ def multi2unimodal(windows,dateTimeWin):
     stdData = stdData.set_index('datetime')
     stdData = stdData.drop_duplicates()
     stdData = stdData.sort_index()
+    stdData['datetime'] = stdData.index
+    ave60min = stdData.resample(rule='60Min', on='datetime').mean()
 
-    return stdData
+    return stdData,bestSignal,allPeaks,bestPeak,ave60min
 
 
 def bestWindow(windows,dateTimeWin):
@@ -284,10 +285,9 @@ def bestWindow(windows,dateTimeWin):
         ts = ts.dropna()
         peaks = getPeaks(ts)
         allPeaks.append(peaks)
-        # tscumsum = ts['timeseries'].cumsum()
-        # tsdif = ts['timeseries'].diff()
-        # rollSTD = ts['timeseries'].rolling(30).std()
-        # rollMean = ts['timeseries'].rolling(20).mean()
+        tsdif = ts['timeseries'].diff()
+        rollSTD = ts['timeseries'].rolling(30).std()
+        rollMean = ts['timeseries'].rolling(20).mean()
         # fig, ax = plt.subplots(4)
         # ax[0].plot(tsdif.index,tsdif,color='orange')
         # ax[0].scatter(tsdif[tsdif>np.nanpercentile(tsdif,99)].index,
@@ -313,7 +313,7 @@ def bestWindow(windows,dateTimeWin):
     minPeaks = np.min(minPeaks)
     for idx,allp in enumerate(allPeaks):
         if allp.shape[0] == minPeaks:
-            d1 = np.max(allp.stds)
+            d1 = np.max(allp.weights)
             if d1!=d2:
                 d2=d1
                 windowsId = idx
@@ -326,7 +326,20 @@ def bestWindow(windows,dateTimeWin):
     bestPeak = getPeaks(bestSignal)
     
     return  bestSignal,allPeaks,bestPeak
+
     
+def fixWindow(dataWin,dateTimeWin):
+    fixDataWin=[]
+    limits=[]
+    for ii, dataW in enumerate(dataWin):
+        dataW = np.array(dataW)
+        tsdif = np.diff(np.hstack((0, dataW)))
+        dataW[tsdif>np.nanpercentile(tsdif,99)] = np.nan
+        dataW[tsdif<np.nanpercentile(tsdif,1)] = np.nan
+        limits.append([np.nanpercentile(tsdif,1),np.nanpercentile(tsdif,99)])
+        fixDataWin.append(dataW)
+
+    return fixDataWin,limits
 
  
 def modelFit(windows,dateTimeWin):  
@@ -354,7 +367,7 @@ def modelFit(windows,dateTimeWin):
         model = arima_model.fit()
         model_fit.append(model.summary())
         model_forecast = model.forecast(data_filled.shape[0]-round(data_filled.shape[0]/2))
-        fcast = model.get_forecast(data_filled.shape[0]-round(data_filled.shape[0]/2)).summary_frame()
+        fcast = model.get_forecast(data_filled.shape[0])
         ax[ii].plot(data_filled.index,data_filled['timeseries'])
         ax[ii].plot(data_filled.index[round(data_filled.shape[0]/2):],
                     model.forecast(data_filled.shape[0]-round(data_filled.shape[0]/2)))
@@ -364,16 +377,17 @@ def modelFit(windows,dateTimeWin):
 
 
 
-folder_path = '/media/leohoinaski/HDD/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
-#folder_path = '/mnt/sdb1/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
+#folder_path = '/media/leohoinaski/HDD/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
+folder_path = '/mnt/sdb1/CLEAN_Calibration/data/2.input_equipo/dados_brutos'
 #folder_path="C:/Users/Leonardo.Hoinaski/Documents/CLEAN_Calibration/scripts/data/2.input_equipo/dados_brutos"
 monitors = openMonitor(folder_path,'O3')
 ave5min,ave15min, gaps = averages (monitors)
 dataWin,dateTimeWin = selectWindow(ave15min,1)
-stat = plotWindows(dataWin,dateTimeWin)
-stdData = multi2unimodal(dataWin,dateTimeWin)
+fixDataWin,limits = fixWindow(dataWin,dateTimeWin)
+stat = plotWindows(fixDataWin,dateTimeWin)
+stdData,bestSignal,allPeaks,bestPeak,ave60min = multi2unimodal(fixDataWin,dateTimeWin)
 #stat = plotWindows(stdData.timeseries,stdData.index)
-stdData.plot()
+ave60min.plot()
 #checkModel,model_fit,yhat_conf_int = modelFit(dataWin,dateTimeWin)
 
 # https://timeseriesreasoning.com/contents/correlation/
